@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
-
+from django.core.management import call_command
 # View de login com JWT
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -47,3 +47,10 @@ def verificar_codigo(request):
     else:
         return Response({"erro": "Código inválido ou expirado."}, status=400)
 
+@api_view(["GET"])
+def rodar_migracoes(request):
+    try:
+        call_command("migrate")
+        return Response({"mensagem": "Migrações aplicadas com sucesso."})
+    except Exception as e:
+        return Response({"erro": str(e)}, status=500)
