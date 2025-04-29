@@ -47,10 +47,24 @@ def verificar_codigo(request):
     else:
         return Response({"erro": "Código inválido ou expirado."}, status=400)
 
-@api_view(["GET"])
-def rodar_migracoes(request):
-    try:
-        call_command("migrate")
-        return Response({"mensagem": "Migrações aplicadas com sucesso."})
-    except Exception as e:
-        return Response({"erro": str(e)}, status=500)
+from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
+
+@api_view(["POST"])
+def criar_superusuario(request):
+    User = get_user_model()
+
+    if User.objects.filter(is_superuser=True).exists():
+        return Response({"erro": "Já existe um superusuário."}, status=400)
+
+    User.objects.create(
+        email="admin@medagenda.com",
+        password=make_password("admin123"),
+        is_superuser=True,
+        is_staff=True,
+        is_active=True,
+        tipo="medico",  # ou "comum", dependendo do seu model
+        
+    )
+
+    return Response({"mensagem": "Superusuário criado com sucesso."})

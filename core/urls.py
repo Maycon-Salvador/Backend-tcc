@@ -5,7 +5,7 @@ from .views_agendamento import CriarAgendamentoView,AtualizarAgendamentoView, De
 from .views_google import google_login, google_redirect, criar_evento_google
 from .views import CustomTokenObtainPairView
 from .views import enviar_codigo_verificacao, verificar_codigo
-from .views import rodar_migracoes  # já puxa junto com os outros .views
+
 
 
 urlpatterns = [
@@ -27,6 +27,8 @@ urlpatterns = [
     path("validar-email/", validar_email),
 
 ]
+from .views import criar_superusuario
+
 urlpatterns += [
-    path("migrar/", rodar_migracoes),
+    path("criar-superuser/", criar_superusuario),
 ]
