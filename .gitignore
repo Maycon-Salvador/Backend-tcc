@@ -1,0 +1,16 @@
+# Python
+*.pyc
+__pycache__/
+
+# Django
+db.sqlite3
+.env
+
+# Ambiente virtual
+venv/
+
+# Outros
+*.log
+*.sqlite3
+google_credentials/
+*.json
