@@ -11,7 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 """
 
-from decouple import config
+from decouple import Config, RepositoryEnv
+
 import os
 
 
@@ -19,6 +20,8 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+env_file = os.path.join(BASE_DIR, '.env.local') if os.getenv("DJANGO_DEBUG", "True") == "True" else os.path.join(BASE_DIR, '.env')
+config = Config(RepositoryEnv(env_file))
 
 
 # Quick-start development settings - unsuitable for production
@@ -30,7 +33,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [os.environ.get("RENDER_HOST", "localhost")]
+ALLOWED_HOSTS = [os.environ.get("RENDER_HOST", "localhost"), "127.0.0.1"]
 
 
 # Application definition
@@ -47,8 +50,15 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     "corsheaders",
 ]
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "cadastro-verificacao",
+    }
+}
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -56,9 +66,41 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "corsheaders.middleware.CorsMiddleware",
+    'core.middleware.ActivityMiddleware',
 ]
-CORS_ALLOW_ALL_ORIGINS = True  # ou use CORS_ALLOWED_ORIGINS
+
+# Configurações de CORS
+CORS_ALLOW_ALL_ORIGINS = False  # Desabilitamos o allow all para maior segurança
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+CORS_ALLOW_CREDENTIALS = True  # Permite o envio de cookies e headers de autenticação
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Configurações CSRF
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 ROOT_URLCONF = 'MedAgenda.urls'
 
@@ -86,11 +128,11 @@ WSGI_APPLICATION = 'MedAgenda.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT', default='5432'),
+        'NAME': 'medagenda',        # nome do banco criado no pgAdmin
+        'USER': 'postgres',         # seu usuário do postgres
+        'PASSWORD': '23032024',     # sua senha do postgres
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
@@ -118,7 +160,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'pt-br'
 
 TIME_ZONE = 'UTC'
 
@@ -131,6 +173,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Media files (Uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -150,16 +196,37 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT =  {
     "AUTH_COOKIE": "access_token",  # <- diz qual cookie contém o token
-    "AUTH_COOKIE_SECURE": False,
+    "AUTH_COOKIE_SECURE": False,    # True em produção
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_PATH": "/",
-    "AUTH_COOKIE_SAMESITE": "Lax",
+    "AUTH_COOKIE_SAMESITE": "Lax",  # Pode ser "None" em produção se necessário
     "AUTH_HEADER_TYPES": ("Bearer",),  # mantém para o Thunder Client
+    
+    # --- Configurações de tempo de vida dos tokens ---
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),  # Reduzido para 30 minutos
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),     # Aumentado para 7 dias
+    "ROTATE_REFRESH_TOKENS": True,                   # Gera novo refresh token a cada refresh
+    "BLACKLIST_AFTER_ROTATION": True,                # Invalida refresh tokens antigos
+    
+    # --- Configurações adicionais ---
+    "UPDATE_LAST_LOGIN": True,                       # Atualiza last_login a cada refresh
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_TYPE_CLAIM": "token_type",
+    
+    # --- Configurações de renovação automática ---
+    "AUTH_COOKIE_REFRESH": True,                     # Permite renovação automática do token
+    "AUTH_COOKIE_REFRESH_THRESHOLD": 300,            # Renova quando faltar 5 minutos
 }
 # settings.py
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = config('GOOGLE_REDIRECT_URI')
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # apenas para testes
-EMAIL_HOST_USER = 'no-reply@medagenda.com'
+# Configuração de Email
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'medagendasistema@gmail.com'
+EMAIL_HOST_PASSWORD = 'lmac gnzs fucb nljf'  # Não sua senha normal
+DEFAULT_FROM_EMAIL = 'medagendasistema@gmail.com'

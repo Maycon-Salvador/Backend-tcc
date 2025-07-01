@@ -2,7 +2,9 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import BaseUserManager
-
+from django.utils import timezone
+from datetime import timedelta
+import uuid
 
 class UsuarioManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -22,9 +24,11 @@ class UsuarioManager(BaseUserManager):
 
 # ✅ Modelo customizado de usuário com campos Google incluídos
 class Usuario(AbstractUser):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     tipo = models.CharField(max_length=20, choices=[("comum", "Comum"), ("medico", "Médico")])
     username = None
+    nome = models.CharField(max_length=255, blank=True)
     cpf = models.CharField(
     max_length=11,  # apenas os números, sem pontos ou traços
     unique=True,
@@ -39,6 +43,7 @@ class Usuario(AbstractUser):
     telefone = models.CharField(max_length=20, blank=True)
     crm = models.CharField(max_length=20, blank=True)
     especialidade = models.CharField(max_length=100, blank=True)
+    foto = models.ImageField(upload_to='fotos_usuarios/', null=True, blank=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['tipo']
@@ -53,6 +58,14 @@ class Usuario(AbstractUser):
     def __str__(self):
         return f"{self.email} ({self.get_tipo_display()})"
 
+    @property
+    def full_name(self):
+        """
+        Retorna o nome completo combinando first_name e last_name.
+        """
+        # Concatena first_name e last_name, tratando casos onde um ou ambos são nulos/vazios
+        full_name = f"{self.first_name or ''} {self.last_name or ''}".strip()
+        return full_name if full_name else "Nome não informado"
 
     class Meta:
         verbose_name = 'Usuário'
@@ -61,10 +74,12 @@ class Usuario(AbstractUser):
 
 # ✅ Modelo de Agendamento de consultas
 class Agendamento(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     STATUS_CHOICES = [
-        ('marcado', 'Marcado'),
+        ('solicitado', 'Agendamento Solicitado'),
+        ('pendente', 'Pendente de Confirmação'),
+        ('agendado', 'Agendado'),
         ('cancelado', 'Cancelado'),
-        ('recusado', 'Recusado'),
         ('concluido', 'Concluído'),
     ]
 
@@ -81,9 +96,53 @@ class Agendamento(models.Model):
     )
 
     data_hora = models.DateTimeField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='marcado')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='solicitado')
     observacoes = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.paciente.email} com {self.medico.email} em {self.data_hora}"
+
+class CodigoVerificacao(models.Model):
+    email = models.EmailField()
+    codigo = models.CharField(max_length=6)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    def esta_valido(self):
+        return timezone.now() < self.criado_em + timedelta(minutes=30)
+
+    
+class HorarioAtendimento(models.Model):
+    medico = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='horarios_atendimento')
+    local = models.CharField(max_length=255)
+
+    DIAS_SEMANA = [
+        ('segunda', 'Segunda'),
+        ('terca', 'Terça'),
+        ('quarta', 'Quarta'),
+        ('quinta', 'Quinta'),
+        ('sexta', 'Sexta'),
+        ('sabado', 'Sábado'),
+        ('domingo', 'Domingo'),
+    ]
+    dia_semana = models.CharField(max_length=10, choices=DIAS_SEMANA)
+    horarios = models.JSONField()  # Salva os horários como lista de strings, ex: ["07:00", "07:40"]
+    indisponivel = models.BooleanField(default=False)
+    duracao_consulta_minutos = models.IntegerField(default=30) # Campo para a duração da consulta em minutos
+    intervalo_consulta_minutos = models.IntegerField(default=10) # Campo para o intervalo entre consultas em minutos
+
+    def __str__(self):
+        return f"{self.medico.email} - {self.dia_semana}"
+
+class AnexoAgendamento(models.Model):
+    agendamento = models.ForeignKey(Agendamento, on_delete=models.CASCADE, related_name='anexos')
+    arquivo = models.FileField(upload_to='anexos_agendamento/')
+    nome_arquivo = models.CharField(max_length=255)  # Armazena o nome original do arquivo
+    data_upload = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Anexo de {self.agendamento} - {self.nome_arquivo}"
+
+    class Meta:
+        verbose_name = 'Anexo de Agendamento'
+        verbose_name_plural = 'Anexos de Agendamento'
 
